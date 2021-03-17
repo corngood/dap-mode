@@ -766,7 +766,8 @@ will be reversed."
 (defun dap--get-path-for-frame (stack-frame)
   "Get file path for a STACK-FRAME."
   (-when-let* ((source (gethash "source" stack-frame))
-               (path (gethash "path" source)))
+               (path (dap--path-from-server
+                      (gethash "path" source))))
     (if (-> path url-unhex-string url-generic-parse-url url-type)
         (lsp--uri-to-path path)
       path)))
@@ -1057,6 +1058,20 @@ terminal configured (probably xterm)."
     (set (make-local-variable 'window-point-insertion-type) t)
     (current-buffer)))
 
+(defun dap--path-to-server (path)
+  (cond
+   ((eq system-type 'windows-nt)
+    (s-replace "/" "\\" path))
+   ((eq system-type 'cygwin)
+    (cygwin-convert-file-name-to-windows path))
+   (t path)))
+
+(defun dap--path-from-server (path)
+  (cond
+   ((eq system-type 'cygwin)
+    (cygwin-convert-file-name-from-windows path))
+   (t path)))
+
 (defun dap--make-request (command &optional args)
   "Make request for COMMAND with arguments ARGS."
   (if args
@@ -1198,9 +1213,7 @@ FILE-BREAKPOINTS is a list of the breakpoints to set for FILE-NAME."
     (dap--make-request
      "setBreakpoints"
      (list :source (list :name (f-filename file-name)
-                         :path (if (eq system-type 'windows-nt)
-                                   (s-replace "/" "\\" file-name)
-                                 file-name))
+                         :path (dap--path-to-server file-name))
            :breakpoints (->> file-breakpoints
                              (-map (-lambda ((it &as &plist :condition :hit-condition :log-message))
                                      (let ((result (->> it dap-breakpoint-get-point line-number-at-pos (list :line))))
